@@ -1,21 +1,36 @@
+from random import random
+from threading import Timer
+
 import pygame
 from entities.BaseEntity import BaseEntity
+from entities.DestructibleEntity import DestructibleEntity
+from entities.ProjectileEntity import ProjectileEntity
 
 
 class App:
     def __init__(self):
         self._running = True
         self._display_surf = None
-        self.size = self.width, self.height = 640, 400
+        self.size = self.width, self.height = 600, 400
+        self.projectiles = []
+        self.enemies = []
+        self.enemySpawnerTimer = Timer(1, self.spawnEnemy)
         self.player = None
 
     def on_init(self):
         pygame.init()
         self._display_surf = pygame.display.set_mode(self.size, pygame.HWSURFACE | pygame.DOUBLEBUF)
         self._running = True
-        self.player = BaseEntity(0, 0, 0, 0, pygame.image.load("images/player.png"))
+        self.player = DestructibleEntity(0, 0, 0, 0, pygame.image.load("images/player.png"), 0, 3, 3, 0.5)
         self.player.x = self.width / 2 - self.player.texture.get_width() / 2
         self.player.y = self.height - self.player.texture.get_height()
+        self.enemySpawnerTimer.start()
+
+
+    def spawnEnemy(self):
+        self.enemies.append(DestructibleEntity(random()*self.width, -16, 0, 0.08, pygame.image.load("images/player.png"), 180, 3, 3, 0.1))
+        self.enemySpawnerTimer = Timer(0.5, self.spawnEnemy)
+        self.enemySpawnerTimer.start()
 
     def on_event(self, event):
         if event.type == pygame.QUIT:
@@ -25,14 +40,17 @@ class App:
             if event.key == pygame.K_ESCAPE:
                 self._running = False
             if event.key == pygame.K_UP:
-                self.player.y_velocity = -1
+                self.player.y_velocity = -0.3
             if event.key == pygame.K_DOWN:
-                self.player.y_velocity = 1
+                self.player.y_velocity = 0.3
             if event.key == pygame.K_LEFT:
-                self.player.x_velocity = -1
+                self.player.x_velocity = -0.3
             if event.key == pygame.K_RIGHT:
-                self.player.x_velocity = 1
-
+                self.player.x_velocity = 0.3
+            if event.key == pygame.K_SPACE:
+                self.projectiles.append(ProjectileEntity(self.player.x + self.player.texture.get_width() / 2, self.player.y, 0, -1, pygame.image.load("images/bullet.png").convert_alpha(), 0, 1))
+            if event.key == pygame.K_BACKSPACE:
+                self.enemies.append(DestructibleEntity(self.player.x + self.player.texture.get_width() / 2, self.player.y, 0, 0, pygame.image.load("images/player.png").convert_alpha(), 0, 3, 3, 0.5))
         if event.type == pygame.KEYUP:
             if event.key == pygame.K_UP or event.key == pygame.K_DOWN:
                 self.player.y_velocity = 0
@@ -41,10 +59,40 @@ class App:
 
     def on_loop(self):
         self.player.update()
+        for projectile in self.projectiles:
+            projectile.update()
+
+        for enemy in self.enemies:
+            enemy.update()
+            if enemy.y > self.height:
+                self.enemies.remove(enemy)
+
+            if self.player.x < enemy.x < self.player.x + self.player.texture.get_width() and self.player.y < enemy.y < self.player.y + self.player.texture.get_height():
+                self.player.hurt(1)
+                enemy.hurt(1)
+
+            for projectile in self.projectiles:
+                if enemy.x < projectile.x < enemy.x + enemy.texture.get_width() and enemy.y < projectile.y < enemy.y + enemy.texture.get_height():
+                    enemy.hurt(projectile.damage)
+                    self.projectiles.remove(projectile)
+
+            if enemy.health <= 0:
+                self.enemies.remove(enemy)
+
+            if self.player.health <= 0:
+                self._running = False
+
+        for projectile in self.projectiles:
+            if projectile.y < 0 or projectile.y > self.height or projectile.x < 0 or projectile.x > self.width:
+                self.projectiles.remove(projectile)
 
     def on_render(self):
         self._display_surf.fill((255, 255, 255))
-        self.player.draw(self._display_surf)
+        self.player.playerdraw(self._display_surf)
+        for projectile in self.projectiles:
+            projectile.draw(self._display_surf)
+        for enemy in self.enemies:
+            enemy.draw(self._display_surf)
         pygame.display.flip()
 
     def on_cleanup(self):
